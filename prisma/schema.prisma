@@ -1,0 +1,98 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String?  @unique
+  createdAt DateTime @default(now())
+}
+
+model Participant {
+  id                String   @id @default(cuid())
+  name              String
+  voiceProfileJson  Json?
+  createdAt         DateTime @default(now())
+  meetings          MeetingParticipant[]
+  transcriptSegments TranscriptSegment[]
+}
+
+model Meeting {
+  id             String              @id @default(cuid())
+  title          String
+  language       String              @default("sv")
+  status         String
+  startedAt      DateTime            @default(now())
+  endedAt        DateTime?
+  docUrl         String?
+  errorMessage   String?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  participants   MeetingParticipant[]
+  segments       TranscriptSegment[]
+  artifact       MeetingArtifact?
+  exports        Export[]
+}
+
+model MeetingParticipant {
+  meetingId     String
+  participantId String
+  meeting       Meeting     @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  participant   Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+
+  @@id([meetingId, participantId])
+}
+
+model TranscriptSegment {
+  id               String   @id @default(cuid())
+  meetingId        String
+  participantId    String?
+  speakerLabel     String
+  diarizationLabel String?
+  text             String
+  confidence       Float
+  timestampMs      Int
+  isOverlapping    Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  meeting          Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  participant      Participant? @relation(fields: [participantId], references: [id], onDelete: SetNull)
+
+  @@index([meetingId, timestampMs])
+}
+
+model MeetingArtifact {
+  id            String   @id @default(cuid())
+  meetingId     String   @unique
+  summary       String
+  protocolDraft String
+  keyTopicsJson Json
+  actionItemsJson Json
+  decisionsJson Json
+  openQuestionsJson Json
+  risksJson     Json
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  meeting       Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+}
+
+model Export {
+  id           String   @id @default(cuid())
+  meetingId    String
+  provider     String
+  status       String
+  externalId   String?
+  url          String?
+  errorMessage String?
+  retries      Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  meeting      Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@index([meetingId, provider])
+}
