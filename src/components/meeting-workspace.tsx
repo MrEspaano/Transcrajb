@@ -162,6 +162,10 @@ export function MeetingWorkspace({ meetingId }: MeetingWorkspaceProps): JSX.Elem
       })
     });
 
+    if (response.status === 202) {
+      return;
+    }
+
     await parseResponse<{ segment: MeetingDetails["segments"][number] }>(response);
   }
 
