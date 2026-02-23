@@ -12,7 +12,7 @@ Vid finalize exporteras resultatet automatiskt till Google Docs (eller mock-expo
 
 - Next.js 14 + TypeScript (App Router)
 - API-routes för mötesflöde
-- In-memory datastore i V1-kod (Prisma/Postgres schema medföljer för nästa steg)
+- Prisma + Postgres (Neon)
 - SSE för live-segment i UI
 - OpenAI STT (valfritt) + fallback mock-STT
 - Google Docs/Drive export (valfritt) + fallback mock-export
@@ -41,6 +41,7 @@ npm run dev
 
 ## Miljövariabler
 
+- `DATABASE_URL` (Neon/Postgres, krävs för persistent data)
 - `OPENAI_API_KEY` för riktig STT-transkribering av audio chunks
 - `TRANSCRAJB_USE_MOCK_STT=true|false` (default i exempel är `true`)
 - `GOOGLE_SERVICE_ACCOUNT_EMAIL`
@@ -49,6 +50,18 @@ npm run dev
 - `TRANSCRAJB_USE_MOCK_GOOGLE=true|false`
 
 Om Google credentials saknas skapas export i `.exports/<meetingId>.txt`.
+
+## Neon + Prisma setup
+
+1. Skapa en Neon databas och kopiera connection string.
+2. Sätt `DATABASE_URL` i `.env.local` och i Vercel Environment Variables.
+3. Kör schema-sync lokalt:
+
+```bash
+npm run db:push
+```
+
+4. Deploya till Vercel (Prisma Client genereras via `postinstall`).
 
 ## API-kontrakt (V1)
 
@@ -70,7 +83,6 @@ npm run test
 
 ## Nuvarande begränsningar
 
-- Datalagring är in-memory i runtime (förloras vid omstart)
 - Talaridentifiering använder heuristik + valfri embedding, inte full akustisk diarization-motor
 - Riktig Google-export kräver service account med korrekt delning/behörighet
 
