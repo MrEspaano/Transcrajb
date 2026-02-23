@@ -69,35 +69,44 @@ export class SpeechToTextService {
       };
     }
 
-    try {
-      const mimeType = input.mimeType ?? "audio/webm";
-      const extension = extFromMimeType(mimeType);
-      const buffer = Buffer.from(input.audioBase64, "base64");
+    const mimeType = input.mimeType ?? "audio/webm";
+    const extension = extFromMimeType(mimeType);
+    const buffer = Buffer.from(input.audioBase64, "base64");
+    const modelCandidates = [process.env.OPENAI_STT_MODEL, "gpt-4o-transcribe", "whisper-1"].filter(
+      (model): model is string => Boolean(model)
+    );
 
-      const file = await toFile(buffer, `chunk.${extension}`, {
-        type: mimeType
-      });
+    let lastErrorMessage = "Unknown STT error";
+    for (const model of modelCandidates) {
+      try {
+        const file = await toFile(buffer, `chunk.${extension}`, {
+          type: mimeType
+        });
 
-      const response = await this.client.audio.transcriptions.create({
-        file,
-        model: "gpt-4o-transcribe",
-        language
-      });
+        const response = await this.client.audio.transcriptions.create({
+          file,
+          model,
+          language
+        });
 
-      return {
-        text: response.text.trim(),
-        confidence: 0.9,
-        provider: "openai_stt"
-      };
-    } catch (error) {
-      const fallbackText = mockTranscriptionNotice(language);
-      const message = error instanceof Error ? error.message : "Unknown STT error";
-      return {
-        text: `${fallbackText} Fel: ${message}`,
-        confidence: 0.2,
-        provider: "mock_stt"
-      };
+        return {
+          text: response.text.trim(),
+          confidence: 0.9,
+          provider: "openai_stt"
+        };
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        lastErrorMessage = detail;
+        console.error("[transcrajb][stt] model failed", { model, mimeType, detail });
+      }
     }
+    const fallbackText = mockTranscriptionNotice(language);
+    console.error("[transcrajb][stt] all models failed", { mimeType, message: lastErrorMessage });
+    return {
+      text: `${fallbackText} Fel: ${lastErrorMessage}`,
+      confidence: 0.2,
+      provider: "mock_stt"
+    };
   }
 }
 
