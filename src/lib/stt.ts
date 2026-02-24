@@ -1,6 +1,3 @@
-import OpenAI from "openai";
-import { toFile } from "openai/uploads";
-
 export interface TranscriptionInput {
   text?: string;
   audioBase64?: string;
@@ -40,12 +37,51 @@ function mockTranscriptionNotice(language: string): string {
 }
 
 export class SpeechToTextService {
-  private client: OpenAI | undefined;
+  constructor(apiKey = process.env.OPENAI_API_KEY) {
+    this.apiKey = apiKey?.trim();
+  }
 
-  constructor(private readonly apiKey = process.env.OPENAI_API_KEY) {
-    if (apiKey) {
-      this.client = new OpenAI({ apiKey });
+  private readonly apiKey: string | undefined;
+
+  private async transcribeWithFetch(input: {
+    model: string;
+    language: string;
+    buffer: Buffer;
+    mimeType: string;
+    extension: string;
+  }): Promise<string> {
+    if (!this.apiKey) {
+      throw new Error("Missing OPENAI_API_KEY");
     }
+
+    const formData = new FormData();
+    const safeMimeType = input.mimeType.split(";")[0]?.trim() || "audio/webm";
+    const bytes = Uint8Array.from(input.buffer);
+    const file = new Blob([bytes], { type: safeMimeType });
+    formData.append("file", file, `chunk.${input.extension}`);
+    formData.append("model", input.model);
+    formData.append("language", input.language);
+
+    const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.apiKey}`
+      },
+      body: formData,
+      signal: AbortSignal.timeout(25000)
+    });
+
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(`OpenAI ${response.status}: ${body.slice(0, 240)}`);
+    }
+
+    const payload = (await response.json()) as { text?: string };
+    if (!payload.text?.trim()) {
+      throw new Error("OpenAI returned empty transcription text");
+    }
+
+    return payload.text.trim();
   }
 
   async transcribe(input: TranscriptionInput): Promise<TranscriptionResult> {
@@ -61,7 +97,7 @@ export class SpeechToTextService {
     const language = input.language ?? "sv";
     const useMock = process.env.TRANSCRAJB_USE_MOCK_STT === "true";
 
-    if (useMock || !this.client || !input.audioBase64) {
+    if (useMock || !this.apiKey || !input.audioBase64) {
       return {
         text: mockTranscriptionNotice(language),
         confidence: 0.35,
@@ -79,18 +115,16 @@ export class SpeechToTextService {
     let lastErrorMessage = "Unknown STT error";
     for (const model of modelCandidates) {
       try {
-        const file = await toFile(buffer, `chunk.${extension}`, {
-          type: mimeType
-        });
-
-        const response = await this.client.audio.transcriptions.create({
-          file,
+        const textFromModel = await this.transcribeWithFetch({
           model,
-          language
+          language,
+          buffer,
+          mimeType,
+          extension
         });
 
         return {
-          text: response.text.trim(),
+          text: textFromModel,
           confidence: 0.9,
           provider: "openai_stt"
         };
